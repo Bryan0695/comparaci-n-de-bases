@@ -1,0 +1,65 @@
+/* jsondiffpatch styles */
+.jsondiffpatch-delta {
+    font-family: 'Monaco', 'Consolas', 'Lucida Console', monospace;
+    font-size: 13px;
+    margin: 0;
+    padding: 0;
+    display: inline-block;
+}
+
+.jsondiffpatch-delta pre {
+    font-family: inherit;
+    font-size: inherit;
+    margin: 0;
+    padding: 0;
+    display: inline-block;
+}
+
+.jsondiffpatch-unchanged {
+    color: var(--text-secondary);
+    display: inline-block;
+    padding: 1px 4px;
+}
+
+.jsondiffpatch-added .jsondiffpatch-property-name,
+.jsondiffpatch-added .jsondiffpatch-value pre,
+.jsondiffpatch-added .jsondiffpatch-value {
+    background: rgba(16, 185, 129, 0.2);
+    color: #4ade80;
+    min-width: 20px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.jsondiffpatch-deleted .jsondiffpatch-property-name,
+.jsondiffpatch-deleted .jsondiffpatch-value pre,
+.jsondiffpatch-deleted .jsondiffpatch-value {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    text-decoration: line-through;
+    min-width: 20px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.jsondiffpatch-modified .jsondiffpatch-left-value pre,
+.jsondiffpatch-modified .jsondiffpatch-left-value {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    text-decoration: line-through;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.jsondiffpatch-modified .jsondiffpatch-right-value pre,
+.jsondiffpatch-modified .jsondiffpatch-right-value {
+    background: rgba(16, 185, 129, 0.2);
+    color: #4ade80;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.jsondiffpatch-arrow {
+    color: var(--text-secondary);
+    margin: 0 5px;
+}
