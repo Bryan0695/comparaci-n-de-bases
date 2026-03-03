@@ -2,16 +2,25 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const { create: createDiff } = require('jsondiffpatch');
 
 const app = express();
 const port = process.env.PORT || 5000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
 const MAX_DOCS = parseInt(process.env.MAX_DOCS_PER_COLLECTION) || 50000;
-const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS) || 300000; // 5 min
+const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS) || 300000;
 
 app.use(cors({ origin: CORS_ORIGIN }));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
+
+const compareLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { error: 'Demasiadas solicitudes. Por favor espere un momento.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 const differ = createDiff({
     objectHash: function (obj, index) {
@@ -24,6 +33,9 @@ const differ = createDiff({
 function validateMongoUri(uri) {
     if (typeof uri !== 'string' || uri.trim().length === 0) {
         throw new Error('La URI de MongoDB no puede estar vacía');
+    }
+    if (uri.length > 2048) {
+        throw new Error('La URI es demasiado larga (máximo 2048 caracteres)');
     }
     try {
         const parsed = new URL(uri);
@@ -55,7 +67,7 @@ async function fetchDocs(conn, collectionName) {
     }
 
     const docs = await collection.find({}).sort({ _id: 1 }).limit(MAX_DOCS).toArray();
-    console.log(`      [${conn.name}] Fetched ${docs.length}/${totalCount} docs from ${collectionName} in ${Date.now() - start}ms`);
+    console.log(`      [${conn.name}] Fetched ${docs.length}/${totalCount} docs in ${Date.now() - start}ms`);
     return { docs, totalCount, truncated };
 }
 
@@ -67,24 +79,18 @@ async function compareCollections(conn1, conn2, colName) {
         summary: { count1: 0, count2: 0, truncated: false }
     };
 
-    // Fetch from both DBs in parallel
     const [fetch1, fetch2] = await Promise.all([
         fetchDocs(conn1, colName),
         fetchDocs(conn2, colName)
     ]);
 
-    const docs1 = fetch1.docs;
-    const docs2 = fetch2.docs;
-
     result.summary.count1 = fetch1.totalCount;
     result.summary.count2 = fetch2.totalCount;
     result.summary.truncated = fetch1.truncated || fetch2.truncated;
 
-    console.log(`      Calculando diferencias en memoria para ${colName}...`);
     const startDiff = Date.now();
-
-    const map1 = new Map(docs1.map(d => [String(d._id), d]));
-    const map2 = new Map(docs2.map(d => [String(d._id), d]));
+    const map1 = new Map(fetch1.docs.map(d => [String(d._id), d]));
+    const map2 = new Map(fetch2.docs.map(d => [String(d._id), d]));
     const allIds = new Set([...map1.keys(), ...map2.keys()]);
 
     for (const id of allIds) {
@@ -92,29 +98,28 @@ async function compareCollections(conn1, conn2, colName) {
         const d2 = map2.get(id);
 
         if (!d1) {
-            result.diffs.push({ id, status: 'missing_in_db1', diff: null });
+            result.diffs.push({ id, status: 'missing_in_db1', doc1: null, doc2: d2 });
             result.status = 'different';
         } else if (!d2) {
-            result.diffs.push({ id, status: 'missing_in_db2', diff: null });
+            result.diffs.push({ id, status: 'missing_in_db2', doc1: d1, doc2: null });
             result.status = 'different';
         } else {
             const delta = differ.diff(d1, d2);
             if (delta) {
-                result.diffs.push({ id, status: 'modified', diff: delta });
+                result.diffs.push({ id, status: 'modified', doc1: d1, doc2: d2 });
                 result.status = 'different';
             }
         }
     }
-    console.log(`    < Fin comparación ${colName} (${Date.now() - startDiff}ms). Status: ${result.status}`);
+    console.log(`    < Fin ${colName} (${Date.now() - startDiff}ms). Status: ${result.status}`);
     return result;
 }
 
-// --- API Route ---
+// --- API Routes ---
 
-app.post('/api/compare', async (req, res) => {
+app.post('/api/compare', compareLimiter, async (req, res) => {
     const { uri1, uri2, prefix1, prefix2, skipCollections } = req.body;
 
-    // Validation
     if (!uri1 || !uri2) {
         return res.status(400).json({ error: 'Faltan las URIs de MongoDB' });
     }
@@ -126,16 +131,14 @@ app.post('/api/compare', async (req, res) => {
         return res.status(400).json({ error: e.message });
     }
 
-    // Request timeout
     let timedOut = false;
     const timeout = setTimeout(() => {
         timedOut = true;
         if (!res.headersSent) {
-            res.status(504).json({ error: `La comparación excedió el tiempo límite de ${REQUEST_TIMEOUT_MS / 1000} segundos` });
+            res.status(504).json({ error: `La comparación excedió el tiempo límite de ${REQUEST_TIMEOUT_MS / 1000}s` });
         }
     }, REQUEST_TIMEOUT_MS);
 
-    // Parse excluded collections
     const ignoredCols = skipCollections
         ? skipCollections.split(',').map(s => s.trim()).filter(s => s.length > 0)
         : [];
@@ -145,153 +148,164 @@ app.post('/api/compare', async (req, res) => {
     let mainConn1, mainConn2;
     try {
         console.log('---------------------------------------------------');
-        console.log('Iniciando comparación con normalización de nombres...');
-        if (prefix1) console.log(`Ignorando prefijo URI 1: "${prefix1}"`);
-        if (prefix2) console.log(`Ignorando prefijo URI 2: "${prefix2}"`);
+        console.log('Iniciando comparación...');
+        if (prefix1) console.log(`Prefijo URI 1: "${prefix1}"`);
+        if (prefix2) console.log(`Prefijo URI 2: "${prefix2}"`);
 
-        mainConn1 = await connectToMongo(uri1);
-        mainConn2 = await connectToMongo(uri2);
+        // Connect to both in parallel
+        [mainConn1, mainConn2] = await Promise.all([
+            connectToMongo(uri1),
+            connectToMongo(uri2),
+        ]);
 
-        // Map: CleanName -> { db1: RealName, db2: RealName }
         const dbMap = new Map();
         const warnings = [];
 
-        // Process URI 1 DBs
-        try {
-            const admin1 = mainConn1.db.admin();
-            const dbs1 = await admin1.listDatabases();
-            dbs1.databases.forEach(db => {
+        // List databases from both connections in parallel
+        const [listResult1, listResult2] = await Promise.allSettled([
+            mainConn1.db.admin().listDatabases(),
+            mainConn2.db.admin().listDatabases(),
+        ]);
+
+        if (listResult1.status === 'fulfilled') {
+            listResult1.value.databases.forEach(db => {
                 const realName = db.name;
-                if (realName === 'admin' || realName === 'local' || realName === 'config') return;
-
-                let cleanName = realName;
-                if (prefix1 && cleanName.startsWith(prefix1)) {
-                    cleanName = cleanName.substring(prefix1.length);
-                }
-
+                if (['admin', 'local', 'config'].includes(realName)) return;
+                const cleanName = (prefix1 && realName.startsWith(prefix1))
+                    ? realName.substring(prefix1.length)
+                    : realName;
                 if (!dbMap.has(cleanName)) dbMap.set(cleanName, {});
                 dbMap.get(cleanName).db1 = realName;
             });
-        } catch (e) {
-            const msg = `[URI 1] Error listando bases: ${e.message}`;
+        } else {
+            const msg = `[URI 1] Error listando bases: ${listResult1.reason.message}`;
             console.warn(msg);
             warnings.push(msg);
-            // Fallback: use the connection's default DB
             const realName = mainConn1.name;
-            let cleanName = realName;
-            if (prefix1 && cleanName.startsWith(prefix1)) cleanName = cleanName.substring(prefix1.length);
+            const cleanName = (prefix1 && realName.startsWith(prefix1))
+                ? realName.substring(prefix1.length)
+                : realName;
             if (!dbMap.has(cleanName)) dbMap.set(cleanName, {});
             dbMap.get(cleanName).db1 = realName;
         }
 
-        // Process URI 2 DBs
-        try {
-            const admin2 = mainConn2.db.admin();
-            const dbs2 = await admin2.listDatabases();
-            dbs2.databases.forEach(db => {
+        if (listResult2.status === 'fulfilled') {
+            listResult2.value.databases.forEach(db => {
                 const realName = db.name;
-                if (realName === 'admin' || realName === 'local' || realName === 'config') return;
-
-                let cleanName = realName;
-                if (prefix2 && cleanName.startsWith(prefix2)) {
-                    cleanName = cleanName.substring(prefix2.length);
-                }
-
+                if (['admin', 'local', 'config'].includes(realName)) return;
+                const cleanName = (prefix2 && realName.startsWith(prefix2))
+                    ? realName.substring(prefix2.length)
+                    : realName;
                 if (!dbMap.has(cleanName)) dbMap.set(cleanName, {});
                 dbMap.get(cleanName).db2 = realName;
             });
-        } catch (e) {
-            const msg = `[URI 2] Error listando bases: ${e.message}`;
+        } else {
+            const msg = `[URI 2] Error listando bases: ${listResult2.reason.message}`;
             console.warn(msg);
             warnings.push(msg);
             const realName = mainConn2.name;
-            let cleanName = realName;
-            if (prefix2 && cleanName.startsWith(prefix2)) cleanName = cleanName.substring(prefix2.length);
+            const cleanName = (prefix2 && realName.startsWith(prefix2))
+                ? realName.substring(prefix2.length)
+                : realName;
             if (!dbMap.has(cleanName)) dbMap.set(cleanName, {});
             dbMap.get(cleanName).db2 = realName;
         }
 
-        const fullResults = {};
-        console.log(`Analizando ${dbMap.size} bases de datos canónicas...`);
+        console.log(`Analizando ${dbMap.size} bases de datos en paralelo...`);
 
-        for (const [cleanName, names] of dbMap.entries()) {
-            if (timedOut) break;
+        // Process ALL databases in parallel
+        const dbResultPairs = await Promise.all(
+            [...dbMap.entries()].map(async ([cleanName, names]) => {
+                if (timedOut) return [cleanName, null];
 
-            console.log(`Procesando: ${cleanName} (BD1: ${names.db1 || 'Falta'}, BD2: ${names.db2 || 'Falta'})`);
+                console.log(`  DB: ${cleanName} (BD1: ${names.db1 || 'Falta'}, BD2: ${names.db2 || 'Falta'})`);
 
-            const dbResult = {
-                status: 'equal',
-                collections: {},
-                details: { inServer1: !!names.db1, inServer2: !!names.db2 }
-            };
+                const dbResult = {
+                    status: 'equal',
+                    collections: {},
+                    details: { inServer1: !!names.db1, inServer2: !!names.db2 }
+                };
 
-            let cols1 = [], cols2 = [];
-            let dbConn1, dbConn2;
-
-            if (names.db1) {
-                dbConn1 = mainConn1.useDb(names.db1);
-                try {
-                    cols1 = (await dbConn1.db.listCollections().toArray()).map(c => c.name);
-                } catch (e) {
-                    console.warn(`Error listing cols in ${names.db1}: ${e.message}`);
+                if (!names.db1 || !names.db2) {
+                    dbResult.status = 'missing_database';
+                    return [cleanName, dbResult];
                 }
-            }
 
-            if (names.db2) {
-                dbConn2 = mainConn2.useDb(names.db2);
-                try {
-                    cols2 = (await dbConn2.db.listCollections().toArray()).map(c => c.name);
-                } catch (e) {
-                    console.warn(`Error listing cols in ${names.db2}: ${e.message}`);
-                }
-            }
+                const dbConn1 = mainConn1.useDb(names.db1);
+                const dbConn2 = mainConn2.useDb(names.db2);
 
-            if (!names.db1 && !names.db2) continue;
+                // List collections from both DBs in parallel
+                const [colList1, colList2] = await Promise.allSettled([
+                    dbConn1.db.listCollections().toArray(),
+                    dbConn2.db.listCollections().toArray(),
+                ]);
 
-            if (names.db1 && names.db2) {
-                const allCols = new Set([...cols1, ...cols2]);
-                for (const col of allCols) {
-                    if (timedOut) break;
+                const cols1 = colList1.status === 'fulfilled'
+                    ? colList1.value.map(c => c.name)
+                    : (console.warn(`Error cols ${names.db1}: ${colList1.reason.message}`), []);
 
-                    if (ignoredCols.includes(col)) {
-                        console.log(`    [SKIP] Ignorando colección excluida por usuario: ${col}`);
-                        continue;
-                    }
+                const cols2 = colList2.status === 'fulfilled'
+                    ? colList2.value.map(c => c.name)
+                    : (console.warn(`Error cols ${names.db2}: ${colList2.reason.message}`), []);
 
-                    const colIn1 = cols1.includes(col);
-                    const colIn2 = cols2.includes(col);
+                const allCols = [...new Set([...cols1, ...cols2])]
+                    .filter(col => !ignoredCols.includes(col));
 
-                    if (colIn1 && colIn2) {
-                        const comparison = await compareCollections(dbConn1, dbConn2, col);
-                        dbResult.collections[col] = comparison;
-                        if (comparison.status === 'different') dbResult.status = 'different';
-                    } else {
-                        dbResult.collections[col] = {
-                            status: 'missing_collection',
-                            summary: { inDb1: colIn1, inDb2: colIn2 }
+                // Process ALL collections in parallel
+                const colResultPairs = await Promise.all(
+                    allCols.map(async (col) => {
+                        if (timedOut) return { col, data: null };
+
+                        const colIn1 = cols1.includes(col);
+                        const colIn2 = cols2.includes(col);
+
+                        if (colIn1 && colIn2) {
+                            const comparison = await compareCollections(dbConn1, dbConn2, col);
+                            return { col, data: comparison };
+                        }
+
+                        return {
+                            col,
+                            data: {
+                                status: 'missing_collection',
+                                summary: { inDb1: colIn1, inDb2: colIn2 }
+                            }
                         };
-                        dbResult.status = 'different';
-                    }
-                }
-            } else {
-                dbResult.status = 'missing_database';
-            }
+                    })
+                );
 
-            fullResults[cleanName] = dbResult;
-        }
+                for (const { col, data } of colResultPairs) {
+                    if (!data) continue;
+                    dbResult.collections[col] = data;
+                    if (data.status !== 'equal') dbResult.status = 'different';
+                }
+
+                return [cleanName, dbResult];
+            })
+        );
+
+        const fullResults = Object.fromEntries(
+            dbResultPairs.filter(([, v]) => v !== null)
+        );
 
         if (!timedOut && !res.headersSent) {
             const response = { success: true, results: fullResults };
-            if (warnings.length > 0) {
-                response.warnings = warnings;
-            }
+            if (warnings.length > 0) response.warnings = warnings;
             res.json(response);
         }
 
     } catch (error) {
         console.error('Comparison error:', error);
         if (!res.headersSent) {
-            res.status(500).json({ error: 'Error interno en la comparación. Revise las URIs e intente de nuevo.' });
+            let message = 'Error interno en la comparación.';
+            if (error.code === 18 || error.codeName === 'AuthenticationFailed') {
+                message = 'Error de autenticación: credenciales incorrectas en la URI.';
+            } else if (error.name === 'MongoNetworkError' || error.code === 'ECONNREFUSED') {
+                message = 'No se pudo conectar al servidor MongoDB. Verifique que esté activo y accesible.';
+            } else if (error.name === 'MongoServerSelectionError') {
+                message = 'No se encontró el servidor MongoDB. Verifique la URI y el puerto.';
+            }
+            res.status(500).json({ error: message });
         }
     } finally {
         clearTimeout(timeout);
@@ -305,6 +319,7 @@ const server = app.listen(port, () => {
     console.log(`CORS origin: ${CORS_ORIGIN}`);
     console.log(`Max docs per collection: ${MAX_DOCS}`);
     console.log(`Request timeout: ${REQUEST_TIMEOUT_MS / 1000}s`);
+    console.log(`Rate limit: 10 requests/min`);
 });
 
 server.on('error', (err) => {

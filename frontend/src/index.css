@@ -178,6 +178,354 @@ input[type="text"]:focus {
 }
 
 .diff-item {
-  padding: 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+.diff-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.diff-item-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.diff-item-id {
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-right: 0.75rem;
+}
+
+.diff-item-body {
+  padding: 0 1rem 1rem;
+}
+
+/* ---- Mode tabs ---- */
+
+.mode-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+}
+
+.tab-btn {
+  padding: 0.6rem 1.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  border-radius: 6px 6px 0 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-btn--active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* ---- Card variants ---- */
+
+.card--danger {
+  border-left: 4px solid var(--danger);
+}
+
+.card--danger h3 {
+  color: var(--danger);
+}
+
+.card--warning {
+  border-left: 4px solid #f59e0b;
+}
+
+.card--warning h3 {
+  color: #f59e0b;
+}
+
+/* ---- Loading state ---- */
+
+.loading-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 2rem;
+}
+
+.loading-card p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Connection form aux row (name + prefix side by side) ---- */
+
+.conn-aux {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.conn-aux-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.conn-aux-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.conn-aux-field input[type="text"] {
+  font-size: 0.88rem;
+  padding: 0.4rem 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .conn-aux {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
+/* ---- JSON compare ---- */
+
+.json-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .json-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+
+.json-textarea {
+  width: 100%;
+  min-height: 260px;
+  padding: 0.75rem;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.json-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.json-textarea--invalid {
+  border-color: var(--danger);
+}
+
+.field-error {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+/* ---- JSON result header ---- */
+
+.json-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.json-result-header h2 {
+  margin: 0;
+}
+
+/* ---- Side-by-side split diff ---- */
+
+.sdiff-container {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.sdiff-panel {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.sdiff-divider {
+  width: 2px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.sdiff-header {
+  padding: 0.45rem 1rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  position: sticky;
+  top: 0;
+}
+
+.sdiff-header--left  { color: #f87171; }
+.sdiff-header--right { color: #4ade80; }
+
+.sdiff-code {
+  margin: 0;
+  padding: 0;
+  font-family: 'Monaco', 'Consolas', 'Lucida Console', monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  background: var(--bg-secondary);
+  overflow-x: auto;
+}
+
+.sdiff-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  min-height: 1.6em;
+  white-space: pre;
+}
+
+.sdiff-ln {
+  display: inline-block;
+  min-width: 3rem;
+  padding: 0 0.6rem;
+  text-align: right;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  user-select: none;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  margin-right: 0.75rem;
+  opacity: 0.6;
+}
+
+.sdiff-text {
+  flex: 1;
+  overflow-x: visible;
+}
+
+/* Line type colors */
+.sdiff-line--equal {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.sdiff-line--removed {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+
+.sdiff-line--added {
+  background: rgba(16, 185, 129, 0.18);
+  color: #86efac;
+}
+
+.sdiff-line--changed-old {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+}
+
+.sdiff-line--changed-new {
+  background: rgba(16, 185, 129, 0.22);
+  color: #86efac;
+}
+
+/* Phantom row: the blank space on the opposite side */
+.sdiff-line--phantom {
+  background: rgba(0, 0, 0, 0.25);
+  color: transparent;
+  user-select: none;
+}
+
+.sdiff-line--phantom .sdiff-ln {
+  opacity: 0;
+}
+
+/* Separator row (···) shown when "solo diferencias" is active */
+.sdiff-line--separator,
+.sdiff-line[data-separator] {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-style: italic;
+  justify-content: center;
+  padding: 0.1rem 0;
+  font-size: 0.8rem;
+}
+
+/* "Solo diferencias" toggle */
+.sdiff-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sdiff-toggle input {
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+/* Responsive: stack panels vertically on small screens */
+@media (max-width: 700px) {
+  .sdiff-container {
+    flex-direction: column;
+  }
+  .sdiff-divider {
+    width: 100%;
+    height: 2px;
+  }
 }

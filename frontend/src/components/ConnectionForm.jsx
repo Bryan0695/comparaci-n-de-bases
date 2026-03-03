@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 export default function ConnectionForm({ onCompare, isLoading }) {
     const [uri1, setUri1] = useState('');
     const [uri2, setUri2] = useState('');
-
+    const [name1, setName1] = useState('');
+    const [name2, setName2] = useState('');
     const [prefix1, setPrefix1] = useState('');
     const [prefix2, setPrefix2] = useState('');
     const [skipCollections, setSkipCollections] = useState('');
@@ -11,7 +12,7 @@ export default function ConnectionForm({ onCompare, isLoading }) {
     const handleSubmit = (e) => {
         e.preventDefault();
         if (uri1 && uri2) {
-            onCompare(uri1, uri2, prefix1, prefix2, skipCollections);
+            onCompare(uri1, uri2, prefix1, prefix2, skipCollections, name1, name2);
         }
     };
 
@@ -19,6 +20,8 @@ export default function ConnectionForm({ onCompare, isLoading }) {
         <div className="card">
             <h2>Conexión</h2>
             <form onSubmit={handleSubmit}>
+
+                {/* ── Conexión 1 ── */}
                 <div className="form-group">
                     <label>Base de Datos 1 (URI)</label>
                     <input
@@ -28,15 +31,31 @@ export default function ConnectionForm({ onCompare, isLoading }) {
                         onChange={(e) => setUri1(e.target.value)}
                         disabled={isLoading}
                     />
-                    <input
-                        type="text"
-                        placeholder="Ignorar prefijo (ej: BO_)"
-                        style={{ marginTop: '5px', fontSize: '0.9em', padding: '0.4rem' }}
-                        value={prefix1}
-                        onChange={(e) => setPrefix1(e.target.value)}
-                        disabled={isLoading}
-                    />
+                    <div className="conn-aux">
+                        <div className="conn-aux-field">
+                            <span className="conn-aux-label">Nombre</span>
+                            <input
+                                type="text"
+                                placeholder="Ej: Producción"
+                                value={name1}
+                                onChange={(e) => setName1(e.target.value)}
+                                disabled={isLoading}
+                            />
+                        </div>
+                        <div className="conn-aux-field">
+                            <span className="conn-aux-label">Ignorar prefijo</span>
+                            <input
+                                type="text"
+                                placeholder="Ej: BO_"
+                                value={prefix1}
+                                onChange={(e) => setPrefix1(e.target.value)}
+                                disabled={isLoading}
+                            />
+                        </div>
+                    </div>
                 </div>
+
+                {/* ── Conexión 2 ── */}
                 <div className="form-group">
                     <label>Base de Datos 2 (URI)</label>
                     <input
@@ -46,15 +65,31 @@ export default function ConnectionForm({ onCompare, isLoading }) {
                         onChange={(e) => setUri2(e.target.value)}
                         disabled={isLoading}
                     />
-                    <input
-                        type="text"
-                        placeholder="Ignorar prefijo (ej: QA_KFC_)"
-                        style={{ marginTop: '5px', fontSize: '0.9em', padding: '0.4rem' }}
-                        value={prefix2}
-                        onChange={(e) => setPrefix2(e.target.value)}
-                        disabled={isLoading}
-                    />
+                    <div className="conn-aux">
+                        <div className="conn-aux-field">
+                            <span className="conn-aux-label">Nombre</span>
+                            <input
+                                type="text"
+                                placeholder="Ej: QA"
+                                value={name2}
+                                onChange={(e) => setName2(e.target.value)}
+                                disabled={isLoading}
+                            />
+                        </div>
+                        <div className="conn-aux-field">
+                            <span className="conn-aux-label">Ignorar prefijo</span>
+                            <input
+                                type="text"
+                                placeholder="Ej: QA_KFC_"
+                                value={prefix2}
+                                onChange={(e) => setPrefix2(e.target.value)}
+                                disabled={isLoading}
+                            />
+                        </div>
+                    </div>
                 </div>
+
+                {/* ── Excluir colecciones ── */}
                 <div className="form-group">
                     <label>Excluir Colecciones (separadas por coma)</label>
                     <input
@@ -65,7 +100,12 @@ export default function ConnectionForm({ onCompare, isLoading }) {
                         disabled={isLoading}
                     />
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={isLoading || !uri1 || !uri2}>
+
+                <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isLoading || !uri1 || !uri2}
+                >
                     {isLoading ? 'Comparando...' : 'Comparar Bases de Datos'}
                 </button>
             </form>
